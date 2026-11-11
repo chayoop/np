@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="บันทึกรายการที่ต้องแก้ไขและติดตามความคืบหน้า">
+<title>รายการแก้ไข</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f4f0;color:#172620;font:16px/1.55 "Leelawadee UI",Tahoma,sans-serif}main{max-width:900px;margin:auto;padding:56px 24px}header{background:#12382c;color:#fff;border-radius:24px;padding:34px 38px;display:grid;grid-template-columns:1fr minmax(140px,230px);gap:24px;align-items:center}h1,h2,p{margin:0}h1{font-size:clamp(32px,6vw,52px);line-height:1.18}header p{margin-top:10px;color:#d1e8d9}.progress{background:#ffffff12;border:1px solid #ffffff28;padding:16px;border-radius:14px}.progress strong{display:block;font-size:25px}progress{width:100%;accent-color:#a9ebaa}.panel{background:#fff;border:1px solid #dbe2d9;border-radius:20px;margin-top:22px;padding:24px 28px}h2{font-size:23px;margin-bottom:15px}label.field{display:block;margin:12px 0 5px;font-weight:600}input,textarea,button{font:inherit}input[type=text],textarea{width:100%;border:1px solid #bac9bd;border-radius:9px;padding:10px 12px;background:#fafbf9;color:inherit}textarea{min-height:72px;resize:vertical}button{cursor:pointer;border:1px solid #d4dfd5;border-radius:9px;padding:7px 12px;background:#fff;color:#224035}button.primary{background:#17603f;border-color:#17603f;color:white;padding:9px 16px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.listhead{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}.listhead h2{margin:0}.filters{display:flex;gap:5px;flex-wrap:wrap}.filters [aria-pressed=true]{background:#e1f3e5;border-color:#a0c9a8;color:#114630}ul{list-style:none;margin:0;padding:0}li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;padding:14px 0;border-top:1px solid #e4e9e3}li input{width:20px;height:20px;accent-color:#17603f;margin:3px 0 0;cursor:pointer}li strong,li p{overflow-wrap:anywhere;white-space:pre-wrap}li p,.muted,footer{color:#506258}li.done strong{text-decoration:line-through;color:#506258}.row-actions{display:flex;flex-wrap:wrap;gap:4px}.row-actions button{font-size:14px}footer{margin:14px 4px}#empty{padding:18px 0;text-align:center}#notice{color:#933424}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #337f56;outline-offset:2px}@media(max-width:580px){main{padding:22px 14px}header{grid-template-columns:1fr;padding:24px;gap:16px}.panel{padding:18px}li{grid-template-columns:auto minmax(0,1fr)}.row-actions{grid-column:2}}
+</style>
+</head>
+<body>
+<main>
+<header><div><h1>รายการแก้ไข</h1><p>จดสิ่งที่ต้องแก้ แล้วติ๊กเมื่อแก้เสร็จ</p></div><div class="progress"><span id="progress-label">ความคืบหน้า</span><strong id="count" aria-live="polite"></strong><progress id="progress" max="1" value="0" aria-labelledby="progress-label"></progress></div></header>
+<section class="panel" aria-labelledby="form-title">
+<h2 id="form-title">เพิ่มรายการ</h2>
+<form id="form">
+<label class="field" for="title">สิ่งที่ต้องแก้</label><input id="title" type="text" required maxlength="180" placeholder="เช่น แก้เบอร์โทรในหน้าเว็บไซต์">
+<label class="field" for="details">รายละเอียดเพิ่มเติม (ถ้ามี)</label><textarea id="details" maxlength="2000" placeholder="ระบุจุดที่ต้องแก้หรือสิ่งที่ต้องตรวจสอบ"></textarea>
+<div class="actions"><button class="primary" id="submit" type="submit">เพิ่มรายการ</button><button id="cancel" type="button" hidden>ยกเลิก</button></div>
+</form></section>
+<section class="panel" aria-labelledby="list-title">
+<div class="listhead"><h2 id="list-title">รายการทั้งหมด</h2><div class="filters" aria-label="กรองรายการ"><button data-filter="all" aria-pressed="true">ทั้งหมด</button><button data-filter="open" aria-pressed="false">รอแก้</button><button data-filter="done" aria-pressed="false">แก้แล้ว</button></div></div>
+<ul id="list"></ul><p class="muted" id="empty">ยังไม่มีรายการ</p>
+</section>
+<footer>ข้อมูลจะบันทึกในเบราว์เซอร์นี้</footer><p id="notice" role="status"></p>
+</main>
+<script>
+const key = 'fix-tracker-v1';
+const byId = id => document.getElementById(id);
+const form = byId('form');
+const title = byId('title');
+const details = byId('details');
+const list = byId('list');
+const filters = document.querySelectorAll('[data-filter]');
+let items = [];
+let filter = 'all';
+let editing = null;
+try {
+  const saved = JSON.parse(localStorage.getItem(key));
+  if (Array.isArray(saved)) items = saved;
+} catch {
+  byId('notice').textContent = 'ไม่สามารถโหลดข้อมูลที่บันทึกไว้ได้';
+}
+function save(next) {
+  try {
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    byId('notice').textContent = 'บันทึกข้อมูลไม่ได้ โปรดตรวจสอบพื้นที่จัดเก็บของเบราว์เซอร์';
+    return false;
+  }
+  items = next;
+  byId('notice').textContent = '';
+  render();
+  return true;
+}
+function resetForm() {
+  editing = null;
+  form.reset();
+  byId('form-title').textContent = 'เพิ่มรายการ';
+  byId('submit').textContent = 'เพิ่มรายการ';
+  byId('cancel').hidden = true;
+}
+function action(label, handler) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.addEventListener('click', handler);
+  return button;
+}
+function render() {
+  const done = items.filter(item => item.done).length;
+  byId('count').textContent = 'เสร็จ ' + done + ' / ' + items.length;
+  const progress = byId('progress');
+  progress.max = items.length || 1;
+  progress.value = done;
+  const visible = items.filter(item => filter === 'all' || item.done === (filter === 'done'));
+  list.replaceChildren();
+  byId('empty').hidden = visible.length > 0;
+  byId('empty').textContent = items.length ? 'ไม่มีรายการในสถานะนี้' : 'ยังไม่มีรายการ เพิ่มรายการแรกได้จากแบบฟอร์มด้านบน';
+  for (const item of visible) {
+    const row = document.createElement('li');
+    row.classList.toggle('done', item.done);
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = item.done;
+    check.setAttribute('aria-label', 'แก้เสร็จแล้ว: ' + item.title);
+    check.addEventListener('change', () => {
+      const next = items.map(entry => entry.id === item.id ? {...entry, done: check.checked} : entry);
+      if (!save(next)) check.checked = item.done;
+      else (list.querySelector('input[data-id="' + item.id + '"]') || document.querySelector('[aria-pressed=true]')).focus();
+    });
+    check.dataset.id = item.id;
+    const info = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = item.title;
+    info.append(name);
+    if (item.details) {
+      const description = document.createElement('p');
+      description.textContent = item.details;
+      info.append(description);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    actions.append(action('แก้ไข', () => {
+      editing = item.id;
+      title.value = item.title;
+      details.value = item.details;
+      byId('form-title').textContent = 'แก้ไขรายการ';
+      byId('submit').textContent = 'บันทึก';
+      byId('cancel').hidden = false;
+      title.focus();
+    }), action('ลบ', () => {
+      if (confirm('ลบรายการ “' + item.title + '” ใช่ไหม?') && save(items.filter(entry => entry.id !== item.id))) {
+        if (editing === item.id) resetForm();
+        title.focus();
+      }
+    }));
+    row.append(check, info, actions);
+    list.append(row);
+  }
+}
+title.addEventListener('input', () => title.setCustomValidity(''));
+form.addEventListener('submit', event => {
+  event.preventDefault();
+  const name = title.value.trim();
+  if (!name) {
+    title.setCustomValidity('กรุณากรอกสิ่งที่ต้องแก้');
+    title.reportValidity();
+    return;
+  }
+  const fields = {title: name, details: details.value.trim()};
+  const next = editing
+    ? items.map(item => item.id === editing ? {...item, ...fields} : item)
+    : [{id: globalThis.crypto?.randomUUID?.() || Date.now() + '-' + Math.random().toString(36).slice(2), ...fields, done: false}, ...items];
+  const added = !editing;
+  if (save(next)) {
+    if (added && filter === 'done') filters[1].click();
+    resetForm();
+    title.focus();
+  }
+});
+byId('cancel').addEventListener('click', () => {
+  resetForm();
+  title.focus();
+});
+for (const button of filters) {
+  button.addEventListener('click', () => {
+    filter = button.dataset.filter;
+    for (const option of filters) option.setAttribute('aria-pressed', String(option === button));
+    render();
+  });
+}
+render();
+</script>
+</body>
+</html>
